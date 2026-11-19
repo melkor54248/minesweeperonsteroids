@@ -50,7 +50,8 @@ one and only job. Please thank it before immediately hitting another mine.*
 Double-click `publish\neon\minesweeperonsteroids.exe`.
 
 The standalone **Windows x64** build includes .NET. Players do **not** need to
-install a runtime. The published build is included under `publish\neon`.
+install a runtime. Published builds are local outputs under `publish\neon` and
+are excluded from Git.
 
 ### Starting from source?
 
