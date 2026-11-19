@@ -4,7 +4,7 @@ using System.Text;
 
 namespace MinesweeperOnSteroids;
 
-internal enum GameMode { Classic, Steroids, Daily }
+internal enum GameMode { Classic, Steroids, Daily, Arcade }
 internal enum GameState { Ready, Playing, Won, Lost }
 
 internal sealed record Difficulty(string Name, int Width, int Height, int Mines)
@@ -72,6 +72,13 @@ internal sealed class Game
     }
 
     public Cell this[int x, int y] => cells[x, y];
+
+    internal void AddArcadeShield()
+    {
+        if (Mode != GameMode.Arcade || IsFinished || Shields >= 3)
+            throw new InvalidOperationException("Arcade shields require an active field with fewer than three shields.");
+        Shields++;
+    }
 
     public static int DailySeed(DateOnly date, Difficulty difficulty)
     {

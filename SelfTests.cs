@@ -27,7 +27,14 @@ internal static class SelfTests
             ("Storage write failures produce warnings", StorageFailure),
             ("Original sound cues are distinct, valid, bounded PCM waves", AudioWaves),
             ("Sound playback dispatch or device warning, mute and disposal", AudioPlayback),
-            ("Sound and motion settings persist; older records keep defaults", EffectPreferences)
+            ("Sound and motion settings persist; older records keep defaults", EffectPreferences),
+            ("Arcade energy earning, action cap and opening guard", ArcadeTests.Energy),
+            ("Drone reveals safely, respects flags and cannot refund its cost", ArcadeTests.Drone),
+            ("EMP and Aegis spend exact costs without moving mines", ArcadeTests.EmpAndShield),
+            ("Five escalating sectors carry upgrades, score and energy", ArcadeTests.Progression),
+            ("Arcade invalid actions and loss cannot progress or farm energy", ArcadeTests.Guards),
+            ("Arcade sector records preserve cumulative score", ArcadeTests.Records),
+            ("Upgrade caps and all-difficulty density progression remain safe", ArcadeTests.UpgradeCaps)
         ];
         int failures = 0;
         foreach (var (name, test) in tests)

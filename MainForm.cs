@@ -21,6 +21,15 @@ internal sealed class MainForm : Form
     private readonly Button radarButton;
     private readonly Button soundButton;
     private readonly Button motionButton;
+    private readonly Button droneButton;
+    private readonly Button empButton;
+    private readonly Button aegisButton;
+    private readonly Button nextSectorButton;
+    private readonly ComboBox upgrade = new() { Name = "Upgrade", DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+    private readonly Label overdrive = new() { AutoSize = true, Margin = new(8, 10, 0, 0), ForeColor = NeonTheme.Gold };
+    private readonly OverdriveMeter energyMeter = new();
+    private readonly FlowLayoutPanel arcadeBar = new() { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true };
+    private ArcadeRun? run;
     private Game game = null!;
     private DateOnly date;
     private TimeSpan radarUntil;
@@ -29,6 +38,7 @@ internal sealed class MainForm : Form
 
     internal Game CurrentGame => game;
     internal MinefieldControl Board => board;
+    internal ArcadeRun? CurrentRun => run;
 
     public MainForm(RecordStore? store = null, Func<string, bool>? confirmDiscard = null)
     {
@@ -49,7 +59,7 @@ internal sealed class MainForm : Form
 
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Padding = new(22), ColumnCount = 1, RowCount = 9
+            Dock = DockStyle.Fill, Padding = new(22), ColumnCount = 1, RowCount = 10
         };
         foreach (float height in new float[] { 60, 26, 54, 84, 32 })
             layout.RowStyles.Add(new(SizeType.Absolute, height));
@@ -57,6 +67,7 @@ internal sealed class MainForm : Form
         layout.RowStyles.Add(new(SizeType.Absolute, 52));
         layout.RowStyles.Add(new(SizeType.Absolute, 30));
         layout.RowStyles.Add(new(SizeType.Absolute, 28));
+        layout.RowStyles.Add(new(SizeType.Absolute, 0));
         layout.Controls.Add(new GameBrand(gameIcon) { Dock = DockStyle.Fill }, 0, 0);
         layout.Controls.Add(new Label
         {
@@ -104,6 +115,22 @@ internal sealed class MainForm : Form
         layout.Controls.Add(actions, 0, 6);
         layout.Controls.Add(status, 0, 7);
         layout.Controls.Add(warning, 0, 8);
+        droneButton = MakeButton("Drone [1]", "Drone", (_, _) => Act(board.Selected.X, board.Selected.Y, FieldAction.Drone));
+        empButton = MakeButton("EMP [2]", "Emp", (_, _) => Act(board.Selected.X, board.Selected.Y, FieldAction.Emp));
+        aegisButton = MakeButton("Aegis [3]", "Aegis", (_, _) => Act(board.Selected.X, board.Selected.Y, FieldAction.Aegis));
+        upgrade.Items.AddRange([
+            "Reactor / +1 energy per safe tile",
+            "Armor / +1 starting shield (max 3)",
+            "Efficiency / abilities cost 5 less"
+        ]);
+        upgrade.SelectedIndex = 0;
+        upgrade.SelectedIndexChanged += (_, _) => { if (game is not null) RefreshGame(); };
+        upgrade.AccessibleName = "Upgrade for next sector";
+        upgrade.BackColor = mode.BackColor;
+        upgrade.ForeColor = ForeColor;
+        nextSectorButton = MakeButton("Next sector", "NextSector", (_, _) => AdvanceSector());
+        arcadeBar.Controls.AddRange([droneButton, empButton, aegisButton, overdrive, energyMeter, upgrade, nextSectorButton]);
+        layout.Controls.Add(arcadeBar, 0, 9);
         Controls.Add(layout);
         board.CellAction += Act;
         ticker.Tick += (_, _) => RefreshGame();
@@ -171,15 +198,32 @@ internal sealed class MainForm : Form
         var selectedMode = (GameMode)mode.SelectedIndex;
         Difficulty selectedDifficulty = Difficulty.Presets[difficulty.SelectedIndex];
         date = DateOnly.FromDateTime(DateTime.Now);
-        game = new(selectedDifficulty, selectedMode,
+        run = selectedMode == GameMode.Arcade ? new ArcadeRun(selectedDifficulty, Random.Shared.Next()) : null;
+        game = run?.Game ?? new(selectedDifficulty, selectedMode,
             selectedMode == GameMode.Daily ? Game.DailySeed(date, selectedDifficulty) : Random.Shared.Next());
+        PrepareSector();
+    }
+
+    private void AdvanceSector()
+    {
+        if (run is null || !run.CanAdvance)
+            return;
+        run.Advance((RunUpgrade)upgrade.SelectedIndex);
+        game = run.Game;
+        PrepareSector();
+        board.Focus();
+    }
+
+    private void PrepareSector()
+    {
         clock.Reset();
         recorded = false;
         radarUntil = TimeSpan.Zero;
         board.SetGame(game);
         sounds.Stop();
-        status.Text = "Choose your opening. The first reveal and its neighbors are always safe.";
-        if (selectedMode == GameMode.Daily)
+        status.Text = run is null ? "Choose your opening. The first reveal and its neighbors are always safe." :
+            $"SECTOR {run.Sector}/{ArcadeRun.FinalSector}: {game.Difficulty.Mines} mines. Sweep to charge Overdrive!";
+        if (game.Mode == GameMode.Daily)
         {
             clock.Start();
             Act(game.Width / 2, game.Height / 2, FieldAction.Reveal);
@@ -193,6 +237,7 @@ internal sealed class MainForm : Form
         int previousScore = game.Score;
         int previousShields = game.Shields;
         int previousCombo = game.Combo;
+        int previousSafe = game.SafeRemaining;
         GameState previousState = game.State;
         if (action == FieldAction.Reveal && game.State == GameState.Ready && !game[x, y].IsFlagged)
             clock.Start();
@@ -202,30 +247,48 @@ internal sealed class MainForm : Form
             FieldAction.Flag => game.ToggleFlag(x, y),
             FieldAction.Chord => game.Chord(x, y, clock.Elapsed),
             FieldAction.Radar => game.Scan(x, y),
+            FieldAction.Drone => UseAbility(OverdriveAbility.Drone, x, y),
+            FieldAction.Emp => UseAbility(OverdriveAbility.Emp, x, y),
+            FieldAction.Aegis => UseAbility(OverdriveAbility.Aegis, x, y),
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
         status.Text = result.Message;
+        if (run is not null && action is FieldAction.Reveal or FieldAction.Chord)
+            run.EarnEnergy(previousSafe - game.SafeRemaining);
         if (action == FieldAction.Radar && result.Changed)
         {
             board.RadarCenter = new(x, y);
+            board.RadarRow = null;
+            radarUntil = clock.Elapsed + TimeSpan.FromSeconds(4);
+        }
+        if (action == FieldAction.Emp && result.Changed)
+        {
+            board.RadarCenter = new(x, y);
+            board.RadarRow = y;
             radarUntil = clock.Elapsed + TimeSpan.FromSeconds(4);
         }
         if (game.IsFinished)
         {
             clock.Stop();
             board.RadarCenter = null;
+            board.RadarRow = null;
             if (game.State == GameState.Won && !recorded)
             {
-                records.AddWin(game, clock.Elapsed, date);
+                records.AddWin(game, clock.Elapsed, date, run);
                 recorded = true;
             }
+            if (run is not null)
+                status.Text = game.State == GameState.Lost
+                    ? $"RUN ENDED / Sector {run.Sector} / {run.TotalScore:N0} points. New game to redeploy."
+                    : run.IsComplete ? $"ARCADE CONQUERED! All five sectors cleared / {run.TotalScore:N0} points!"
+                    : $"SECTOR {run.Sector} CLEAR / {run.TotalScore:N0} points. Choose an upgrade, then Next sector.";
         }
         if (result.Changed)
         {
             FieldEffect effect = game.State == GameState.Lost ? FieldEffect.Explosion :
                 game.State == GameState.Won ? FieldEffect.Victory :
-                game.Shields < previousShields ? FieldEffect.Shield :
-                action == FieldAction.Radar ? FieldEffect.Radar :
+                game.Shields != previousShields ? FieldEffect.Shield :
+                action is FieldAction.Radar or FieldAction.Emp ? FieldEffect.Radar :
                 action == FieldAction.Flag ? FieldEffect.Flag : FieldEffect.Reveal;
             Point effectOrigin = game.ExplodedCell is { } exploded ? new(exploded.X, exploded.Y) : new(x, y);
             board.AnimateAction(effectOrigin, effect, game.Score - previousScore);
@@ -248,16 +311,46 @@ internal sealed class MainForm : Form
         RefreshGame();
     }
 
+    private ActionResult UseAbility(OverdriveAbility ability, int x, int y) =>
+        run?.Use(ability, x, y, clock.Elapsed) ?? new(false, "Overdrive abilities are available in Arcade mode only.");
+
     private void RefreshGame()
     {
         if (board.RadarCenter is not null && clock.Elapsed >= radarUntil)
+        {
             board.RadarCenter = null;
-        counters.UpdateValues(game, clock.Elapsed);
-        fieldPanel.UpdateValues(game, clock.Elapsed);
+            board.RadarRow = null;
+        }
+        counters.UpdateValues(game, clock.Elapsed, run);
+        fieldPanel.UpdateValues(game, clock.Elapsed, run);
         int total = game.Width * game.Height - game.Difficulty.Mines;
         powers.Text = $"{game.Mode} / {game.Difficulty.Name}   |   SHIELD {game.Shields}   RADAR {game.Scans}" +
                       $"   |   CLEARED {(total - game.SafeRemaining) * 100 / total}%" +
                       (game.Mode == GameMode.Daily ? $"   |   {date:yyyy-MM-dd}" : "");
+        if (run is not null)
+            powers.Text = $"ARCADE {run.Sector}/{ArcadeRun.FinalSector} / {game.Difficulty.Name}   |   RUN {run.TotalScore:N0}" +
+                $"   |   SHIELD {game.Shields}   RADAR {game.Scans}   |   ENERGY {run.Energy}/100";
+        arcadeBar.Visible = run is not null;
+        if (arcadeBar.Parent is TableLayoutPanel layout)
+            layout.RowStyles[9].Height = run is null ? 0 : 50 * DeviceDpi / 96f;
+        bool advancing = run?.CanAdvance == true;
+        nextSectorButton.Enabled = advancing && run!.CanUpgrade((RunUpgrade)upgrade.SelectedIndex);
+        upgrade.Visible = nextSectorButton.Visible = advancing;
+        droneButton.Visible = empButton.Visible = aegisButton.Visible = !advancing;
+        overdrive.Text = run is null ? "" : advancing
+            ? run.CanUpgrade((RunUpgrade)upgrade.SelectedIndex) ? "UPGRADE:" : "MAX LEVEL"
+            : $"OVERDRIVE {run.Energy}/100";
+        energyMeter.Visible = !advancing;
+        energyMeter.UpdateValue(run?.Energy ?? 0);
+        if (run is not null)
+        {
+            droneButton.Text = $"Drone [1] / {run.Cost(OverdriveAbility.Drone)}";
+            empButton.Text = $"EMP [2] / {run.Cost(OverdriveAbility.Emp)}";
+            aegisButton.Text = $"Aegis [3] / {run.Cost(OverdriveAbility.Aegis)}";
+            droneButton.Enabled = game.State == GameState.Playing && run.Energy >= run.Cost(OverdriveAbility.Drone);
+            empButton.Enabled = game.State == GameState.Playing && run.Energy >= run.Cost(OverdriveAbility.Emp);
+            aegisButton.Enabled = game.State == GameState.Playing && game.Shields < 3 && run.Energy >= run.Cost(OverdriveAbility.Aegis);
+        }
         radarButton.Enabled = game.State == GameState.Playing && game.Scans > 0;
         soundButton.Text = sounds.Enabled ? "Sound: ON" : "Sound: OFF";
         motionButton.Text = board.AnimationsEnabled ? "Motion: FULL" : "Motion: LOW";
@@ -270,7 +363,7 @@ internal sealed class MainForm : Form
 
     private bool DiscardAllowed(string prompt)
     {
-        if (game.State != GameState.Playing)
+        if (game.State != GameState.Playing && !(run is not null && !run.IsComplete && game.State == GameState.Won))
             return true;
         return PauseWhile(() => confirmDiscard?.Invoke(prompt) ??
             MessageBox.Show(this, prompt, "Minefield in progress",
@@ -308,6 +401,12 @@ internal sealed class MainForm : Form
         Score: 10 per safe cell x combo. Classic is always 1x.
         Victory: +1000 plus 2 per second under 10 minutes.
         Daily: same local date + difficulty = same board and fixed center opening.
+        Arcade: conquer five increasingly dense sectors. Safe reveals earn energy
+        (2 per tile, max 20 per action; cap 100). Flags and abilities never recharge it.
+        1: Drone (35) opens a safe tile near selection. 2: EMP (25) scans the row.
+        3: Aegis (60) adds a shield (max 3). Reveal your opening before abilities.
+        Clear a sector, select Reactor, Armor or Efficiency, then Next sector.
+        Energy and upgrades carry forward; shields/radar reset each sector.
 
         Keyboard (minefield focused): Arrows/WASD move; Space reveal; F flag;
         Enter chord; R radar. F2 new game; F1 help. Tab moves between controls.
@@ -321,9 +420,12 @@ internal sealed class MainForm : Form
     {
         string text = records.Data.Wins.Count == 0 ? "No victories yet. The minefield is waiting." :
             string.Join(Environment.NewLine, records.Data.Wins.Take(15).Select(w =>
-                $"{w.Score:N0} pts / {w.Seconds:0.0}s / {w.Mode} / {w.Difficulty} / {w.Date}"));
+                $"{w.Score:N0} pts / {w.Seconds:0.0}s / {w.Mode}" +
+                (w.Sector > 0 ? $" sector {w.Sector}/5 (run score, sector time)" : "") +
+                $" / {w.Difficulty} / {w.Date}"));
         PauseWhile(() => MessageBox.Show(this, text + "\n\nTop 15 wins shown; best 100 retained.\n" +
-            "Assisted and Classic scores are not equivalent.", "Hall of survivors - game paused",
+            "Arcade records show cumulative run points and individual sector times.\n" +
+            "Arcade, assisted and Classic scores are not equivalent.", "Hall of survivors - game paused",
             MessageBoxButtons.OK, MessageBoxIcon.Information));
     }
 

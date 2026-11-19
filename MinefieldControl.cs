@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 
 namespace MinesweeperOnSteroids;
 
-internal enum FieldAction { Reveal, Flag, Chord, Radar }
+internal enum FieldAction { Reveal, Flag, Chord, Radar, Drone, Emp, Aegis }
 internal enum FieldEffect { Reveal, Flag, Radar, Shield, Explosion, Victory }
 
 internal sealed class MinefieldControl : Control
@@ -50,6 +50,8 @@ internal sealed class MinefieldControl : Control
         }
     }
     internal int ActiveAnimationCount => reveals.Count + flagPops.Count + rings.Count + particles.Count + popups.Count;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal int? RadarRow { get; set; }
     internal int AnimationFrameCount => frameCount;
     internal bool AnimationsEnabled => animationsEnabled;
     internal FieldEffect? LastEffect { get; private set; }
@@ -88,6 +90,7 @@ internal sealed class MinefieldControl : Control
         knownRevealed = new bool[value.Width, value.Height];
         knownFlags = new bool[value.Width, value.Height];
         RadarCenter = null;
+        RadarRow = null;
         hovered = null;
         Selected = new(value.Width / 2, value.Height / 2);
         UpdateBoardSize();
@@ -231,8 +234,9 @@ internal sealed class MinefieldControl : Control
             if (!e.ClipRectangle.IntersectsWith(rectangle))
                 continue;
             Cell cell = game[x, y];
-            bool scanned = RadarCenter is { } radar && Math.Abs(radar.X - x) <= 1 &&
-                           Math.Abs(radar.Y - y) <= 1 && !cell.IsRevealed && !game.IsFinished;
+            bool inScan = RadarRow == y || RadarCenter is { } radar &&
+                Math.Abs(radar.X - x) <= 1 && Math.Abs(radar.Y - y) <= 1;
+            bool scanned = inScan && !cell.IsRevealed && !game.IsFinished;
             Point position = new(x, y);
             Color fill = cell.IsRevealed ? Color.FromArgb(18, 30, 45) : Color.FromArgb(56, 83, 109);
             Color ink = Color.FromArgb(255, 201, 88);
@@ -391,6 +395,11 @@ internal sealed class MinefieldControl : Control
             using var pen = new Pen(Color.FromArgb(animationsEnabled ? (int)(180 * (1 - pulse)) : 130, NeonTheme.Cyan), 2);
             graphics.DrawEllipse(pen, (radar.X + .5f) * CellSize - radius, (radar.Y + .5f) * CellSize - radius, radius * 2, radius * 2);
         }
+        if (RadarRow is { } row && game is { IsFinished: false })
+        {
+            using var rowPen = new Pen(Color.FromArgb(160, NeonTheme.Cyan), 2);
+            graphics.DrawRectangle(rowPen, 1, row * CellSize + 1, Width - 3, CellSize - 2);
+        }
         if (game?.IsFinished == true)
         {
             int visibleX = Parent is Panel panel ? -panel.AutoScrollPosition.X : 0;
@@ -494,6 +503,9 @@ internal sealed class MinefieldControl : Control
             Keys.F => FieldAction.Flag,
             Keys.Enter => FieldAction.Chord,
             Keys.R => FieldAction.Radar,
+            Keys.D1 or Keys.NumPad1 => FieldAction.Drone,
+            Keys.D2 or Keys.NumPad2 => FieldAction.Emp,
+            Keys.D3 or Keys.NumPad3 => FieldAction.Aegis,
             _ => null
         };
         if (action is { } value)

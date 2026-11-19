@@ -102,6 +102,7 @@ internal sealed class ShinyButton : Button
 internal sealed class GameHud : Control
 {
     private Game? game;
+    private ArcadeRun? run;
     private TimeSpan elapsed;
 
     public GameHud()
@@ -111,12 +112,13 @@ internal sealed class GameHud : Control
         AccessibleName = "Game statistics";
     }
 
-    public void UpdateValues(Game value, TimeSpan time)
+    public void UpdateValues(Game value, TimeSpan time, ArcadeRun? arcade = null)
     {
         game = value;
+        run = arcade;
         elapsed = time;
         AccessibleDescription = $"Mines {value.Difficulty.Mines - value.FlagCount}, safe cells {value.SafeRemaining}, " +
-            $"score {value.Score}, combo {value.Combo}.";
+            $"score {run?.TotalScore ?? value.Score}, combo {value.Combo}.";
         Invalidate();
     }
 
@@ -126,11 +128,11 @@ internal sealed class GameHud : Control
         if (game is null)
             return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        string[] labels = ["MINES LEFT", "SAFE CELLS", "MISSION TIME", "SCORE", "COMBO"];
+        string[] labels = ["MINES LEFT", "SAFE CELLS", "MISSION TIME", run is null ? "SCORE" : "RUN SCORE", "COMBO"];
         string[] values =
         [
             $"{game.Difficulty.Mines - game.FlagCount:00}", $"{game.SafeRemaining:000}",
-            $"{(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}", $"{game.Score:N0}",
+            $"{(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}", $"{run?.TotalScore ?? game.Score:N0}",
             game.Mode == GameMode.Classic ? "--" : $"x{game.Combo}"
         ];
         Color[] colors = [NeonTheme.Gold, NeonTheme.Cyan, Color.FromArgb(124, 191, 255), Color.WhiteSmoke, Color.FromArgb(204, 148, 255)];
@@ -160,9 +162,46 @@ internal sealed class GameHud : Control
     }
 }
 
+internal sealed class OverdriveMeter : Control
+{
+    private int energy;
+
+    public OverdriveMeter()
+    {
+        DoubleBuffered = true;
+        Size = new(75, 22);
+        Margin = new(3, 7, 3, 0);
+        AccessibleName = "Overdrive energy";
+    }
+
+    public void UpdateValue(int value)
+    {
+        energy = Math.Clamp(value, 0, 100);
+        AccessibleDescription = $"{energy} of 100";
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var track = new Rectangle(1, 3, Width - 3, Height - 7);
+        using var background = new SolidBrush(Color.FromArgb(30, 45, 63));
+        e.Graphics.FillRectangle(background, track);
+        if (energy > 0)
+        {
+            using var fill = new LinearGradientBrush(track, Color.FromArgb(22, 126, 157),
+                energy == 100 ? NeonTheme.Gold : NeonTheme.Cyan, 0f);
+            e.Graphics.FillRectangle(fill, track.X, track.Y, track.Width * energy / 100f, track.Height);
+        }
+        using var border = new Pen(Color.FromArgb(65, 98, 116));
+        e.Graphics.DrawRectangle(border, track);
+    }
+}
+
 internal sealed class MissionPanel : Panel
 {
     private Game? game;
+    private ArcadeRun? run;
     private TimeSpan elapsed;
 
     public MissionPanel()
@@ -174,9 +213,10 @@ internal sealed class MissionPanel : Panel
         BorderStyle = BorderStyle.FixedSingle;
     }
 
-    public void UpdateValues(Game value, TimeSpan time)
+    public void UpdateValues(Game value, TimeSpan time, ArcadeRun? arcade = null)
     {
         game = value;
+        run = arcade;
         elapsed = time;
         if (Controls.Count > 0)
         {
@@ -206,7 +246,8 @@ internal sealed class MissionPanel : Panel
         e.Graphics.FillPath(fill, path);
         using var edge = new Pen(Color.FromArgb(43, 69, 90));
         e.Graphics.DrawPath(edge, path);
-        Draw("MISSION CONTROL", headingFont, NeonTheme.Cyan, 18);
+        Draw(run is null ? "MISSION CONTROL" : $"SECTOR {run.Sector} / {ArcadeRun.FinalSector}",
+            headingFont, NeonTheme.Cyan, 18);
         Draw($"{game.Difficulty.Width} x {game.Difficulty.Height}  /  {game.Difficulty.Mines} MINES", labelFont,
             Color.FromArgb(138, 161, 181), 57);
         int total = game.Width * game.Height - game.Difficulty.Mines;
@@ -233,10 +274,13 @@ internal sealed class MissionPanel : Panel
         }
         Draw(classic ? "NO ASSISTS. JUST DEDUCTION." : $"{game.Scans} SCANS / SELECT A TILE, PRESS R", bodyFont,
             Color.WhiteSmoke, 282);
-        Draw("FIELD INTEL", labelFont, NeonTheme.Gold, 333);
-        Draw("Numbers count nearby mines.\nRight click to mark a threat.\nClick an open number to chord.", bodyFont,
+        Draw(run is null ? "FIELD INTEL" : $"OVERDRIVE / {run.Energy} ENERGY", labelFont, NeonTheme.Gold, 333);
+        Draw(run is null ? "Numbers count nearby mines.\nRight click to mark a threat.\nClick an open number to chord." :
+            $"1 Drone / 2 EMP / 3 Aegis\nUpgrades: R{run.ReactorLevel} A{run.ArmorLevel} E{run.EfficiencyLevel}\nRun score: {run.TotalScore:N0}", bodyFont,
             Color.FromArgb(164, 185, 206), 357, 76);
-        Draw(game.IsFinished ? game.State == GameState.Won ? "MISSION COMPLETE" : "SIGNAL LOST / REDEPLOY" :
+        Draw(game.IsFinished ? game.State == GameState.Won
+            ? run?.IsComplete == true ? "ALL SECTORS CONQUERED" : run is not null ? "UPGRADE / NEXT SECTOR" : "MISSION COMPLETE"
+            : "SIGNAL LOST / REDEPLOY" :
             game.State == GameState.Ready ? "AWAITING YOUR FIRST MOVE" : $"LIVE / {(int)elapsed.TotalMinutes:00}:{elapsed.Seconds:00}",
             labelFont, game.State == GameState.Lost ? Color.Salmon : NeonTheme.Cyan, 432);
 

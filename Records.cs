@@ -3,7 +3,10 @@ using System.Text.Json.Serialization;
 
 namespace MinesweeperOnSteroids;
 
-internal sealed record ScoreRecord(string Mode, string Difficulty, int Score, double Seconds, string Date);
+internal sealed record ScoreRecord(string Mode, string Difficulty, int Score, double Seconds, string Date)
+{
+    public int Sector { get; init; }
+}
 
 internal sealed class PlayerData
 {
@@ -45,6 +48,8 @@ internal sealed class RecordStore
                 data.PreferredDifficulty < 0 || data.PreferredDifficulty >= Difficulty.Presets.Length ||
                 data.Wins.Any(w => w is null || !double.IsFinite(w.Seconds) || w.Seconds < 0 ||
                     w.Score < 0 || !Enum.TryParse<GameMode>(w.Mode, out var m) || !Enum.IsDefined(m) ||
+                    w.Sector < 0 || w.Sector > ArcadeRun.FinalSector ||
+                    (w.Sector > 0 && m != GameMode.Arcade) ||
                     !Difficulty.Presets.Any(d => d.Name == w.Difficulty) ||
                     !DateOnly.TryParseExact(w.Date, "yyyy-MM-dd", out _)))
             {
@@ -63,12 +68,14 @@ internal sealed class RecordStore
 
     public bool CanSave { get; private set; } = true;
 
-    public void AddWin(Game game, TimeSpan elapsed, DateOnly date)
+    public void AddWin(Game game, TimeSpan elapsed, DateOnly date, ArcadeRun? run = null)
     {
         if (game.State != GameState.Won)
             throw new InvalidOperationException("Only a won game may be recorded.");
-        Data.Wins.Add(new(game.Mode.ToString(), game.Difficulty.Name, game.Score,
-            Math.Round(elapsed.TotalSeconds, 1), date.ToString("yyyy-MM-dd")));
+        if (run is not null && !ReferenceEquals(game, run.Game))
+            throw new InvalidOperationException("Arcade records must match the current sector.");
+        Data.Wins.Add(new(game.Mode.ToString(), game.Difficulty.Name, run?.TotalScore ?? game.Score,
+            Math.Round(elapsed.TotalSeconds, 1), date.ToString("yyyy-MM-dd")) { Sector = run?.Sector ?? 0 });
         Data.Wins = Data.Wins.OrderByDescending(w => w.Score).ThenBy(w => w.Seconds).Take(100).ToList();
         Save();
     }

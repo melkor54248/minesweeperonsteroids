@@ -198,6 +198,116 @@ internal static class DesktopTests
             SavePreview(form, outputDirectory, "explosion-preview.png");
             Pump(2600);
             Check(form.Board.ActiveAnimationCount == 0, "Game-over animation settles instead of running forever.");
+            mode.SelectedIndex = (int)GameMode.Arcade;
+            difficulty.SelectedIndex = 0;
+            newGame.PerformClick();
+            var drone = Find<Button>(form, "Drone");
+            var emp = Find<Button>(form, "Emp");
+            var aegis = Find<Button>(form, "Aegis");
+            var nextSector = Find<Button>(form, "NextSector");
+            var upgrade = Find<ComboBox>(form, "Upgrade");
+            Check(form.CurrentRun is { Sector: 1, Energy: 40 } && drone.Visible && !drone.Enabled &&
+                !emp.Enabled && !aegis.Enabled, "Arcade opens with visible abilities locked until first reveal.");
+            if (form.Board.AnimationsEnabled)
+                Find<Button>(form, "Motion").PerformClick();
+            Click(form.Board, 4, 4, MouseButtons.Right);
+            Click(form.Board, 4, 4, MouseButtons.Right);
+            Check(form.CurrentRun!.Energy == 40, "Flag toggles cannot farm Overdrive energy.");
+            Click(form.Board, 4, 4, MouseButtons.Left);
+            Check(form.CurrentRun.Energy is > 40 and <= 60 && drone.Enabled && emp.Enabled,
+                "Safe opening earns capped energy and enables affordable abilities.");
+            while (form.CurrentRun.Energy < 60)
+            {
+                var safe = Positions(form.CurrentGame).First(p => !form.CurrentGame[p.X, p.Y].IsMine &&
+                    !form.CurrentGame[p.X, p.Y].IsRevealed);
+                Click(form.Board, safe.X, safe.Y, MouseButtons.Left);
+            }
+            int scanRow = form.Board.Selected.Y;
+            int beforeEmp = form.CurrentRun.Energy;
+            emp.PerformClick();
+            Check(form.Board.RadarRow == scanRow && form.CurrentRun.Energy == beforeEmp - 25,
+                "EMP button scans the selected row for the exact energy cost.");
+            int beforeDrone = form.CurrentRun.Energy;
+            int safeBeforeDrone = form.CurrentGame.SafeRemaining;
+            PressKey(form.Board, Keys.D1);
+            Check(form.CurrentRun.Energy == beforeDrone - 35 && form.CurrentGame.SafeRemaining < safeBeforeDrone,
+                "Drone key opens safe tiles without earning its energy back.");
+            Pump(4300);
+            Check(form.Board.RadarRow is null, "EMP row intel expires after four seconds.");
+            int completedScore = 0;
+            for (int sector = 1; sector <= ArcadeRun.FinalSector; sector++)
+            {
+                if (form.CurrentGame.State == GameState.Ready)
+                    Click(form.Board, 4, 4, MouseButtons.Left);
+                foreach (var p in Positions(form.CurrentGame).Where(p => !form.CurrentGame[p.X, p.Y].IsMine &&
+                    !form.CurrentGame[p.X, p.Y].IsRevealed))
+                    Click(form.Board, p.X, p.Y, MouseButtons.Left);
+                Check(form.CurrentGame.State == GameState.Won && form.CurrentRun.Sector == sector,
+                    $"Arcade sector {sector} can be cleared through mouse handlers.");
+                completedScore += form.CurrentGame.Score;
+                Check(form.CurrentRun.TotalScore == completedScore, $"Sector {sector} score is accumulated exactly once.");
+                if (sector == ArcadeRun.FinalSector)
+                    break;
+                Check(nextSector.Visible && upgrade.Visible && !drone.Visible,
+                    $"Sector {sector} exposes the upgrade / next-sector controls.");
+                Game cleared = form.CurrentGame;
+                allowDiscard = false;
+                newGame.PerformClick();
+                Check(ReferenceEquals(form.CurrentGame, cleared),
+                    "Cancelling a new game during intermission preserves the Arcade Run.");
+                allowDiscard = true;
+                upgrade.SelectedIndex = sector == 1 ? (int)RunUpgrade.Armor : (int)RunUpgrade.Efficiency;
+                if (sector == 1)
+                    SavePreview(form, outputDirectory, "arcade-upgrade-preview.png");
+                int energyAtExit = form.CurrentRun.Energy;
+                int minesAtExit = form.CurrentGame.Difficulty.Mines;
+                nextSector.PerformClick();
+                Check(form.CurrentRun.Sector == sector + 1 && form.CurrentRun.Energy == energyAtExit &&
+                    form.CurrentGame.Difficulty.Mines > minesAtExit && form.CurrentGame.Shields == 2 &&
+                    form.CurrentGame.State == GameState.Ready && form.Board.RadarRow is null,
+                    $"Next sector {sector + 1} applies upgrades, raises mines and resets overlays.");
+            }
+            Check(form.CurrentRun!.IsComplete && !nextSector.Visible &&
+                !drone.Enabled && !emp.Enabled && !aegis.Enabled, "Fifth sector completes the run and locks abilities.");
+            saved = new RecordStore(recordsPath);
+            saved.Load();
+            Check(saved.Warning is null && saved.Data.Wins.Count(w => w.Mode == nameof(GameMode.Arcade)) == 5 &&
+                saved.Data.Wins.Any(w => w.Sector == 5 && w.Score == form.CurrentRun.TotalScore),
+                "Arcade saves one labeled cumulative-score record per cleared sector.");
+            SavePreview(form, outputDirectory, "arcade-victory-preview.png");
+            newGame.PerformClick();
+            Click(form.Board, 4, 4, MouseButtons.Left);
+            while (form.CurrentRun!.Energy < 60)
+            {
+                var safe = Positions(form.CurrentGame).First(p => !form.CurrentGame[p.X, p.Y].IsMine &&
+                    !form.CurrentGame[p.X, p.Y].IsRevealed);
+                Click(form.Board, safe.X, safe.Y, MouseButtons.Left);
+            }
+            int energyBeforeAegis = form.CurrentRun!.Energy;
+            aegis.PerformClick();
+            Check(form.CurrentGame.Shields == 2 && form.CurrentRun.Energy == energyBeforeAegis - 60,
+                "Aegis button converts energy into protection.");
+            for (int i = 0; i < 3; i++)
+            {
+                var target = Positions(form.CurrentGame).First(p => form.CurrentGame[p.X, p.Y].IsMine &&
+                    !form.CurrentGame[p.X, p.Y].IsFlagged);
+                Click(form.Board, target.X, target.Y, MouseButtons.Left);
+            }
+            Check(form.CurrentGame.State == GameState.Lost && !nextSector.Visible,
+                "Arcade loss ends the run without offering a next sector.");
+            newGame.PerformClick();
+            Check(form.CurrentRun is { Sector: 1, Energy: 40, ArmorLevel: 0, EfficiencyLevel: 0 } &&
+                form.CurrentRun.TotalScore == 0, "New game resets the full Arcade Run.");
+            Click(form.Board, 4, 4, MouseButtons.Left);
+            SavePreview(form, outputDirectory, "arcade-preview.png");
+            mode.SelectedIndex = (int)GameMode.Classic;
+            newGame.PerformClick();
+            Check(form.CurrentRun is null && !drone.Visible && form.CurrentGame.Shields == 0,
+                "Switching back to Classic removes Arcade systems and preserves original rules.");
+            int classicRemaining = form.CurrentGame.SafeRemaining;
+            PressKey(form.Board, Keys.D1);
+            Check(form.CurrentGame.State == GameState.Ready && form.CurrentGame.SafeRemaining == classicRemaining,
+                "Arcade hotkeys cannot reveal or alter a Classic game.");
             form.Close();
             Check(!form.Visible, "Window closes cleanly.");
             report.WriteLine("\nAll desktop UI checks passed.");

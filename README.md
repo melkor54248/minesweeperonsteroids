@@ -38,6 +38,8 @@ one and only job. Please thank it before immediately hitting another mine.*
   and victory. Effects only; no background music.
 - **Up to 5x combos.** Chain productive reveals within four seconds.
   Confidence pays. Recklessness also pays, but usually in explosions.
+- **Arcade Run.** Five escalating sectors, earned Overdrive, three active abilities,
+  and a permanent-for-this-run upgrade choice after every cleared sector.
 - **Comfort controls.** Mute all audio with **Sound: OFF** or calm things down
   with **Motion: LOW**. Both choices are saved. Muting never hides visual clues.
 - **Old-school rules underneath.** Mines stay put. Numbers tell the truth.
@@ -47,7 +49,7 @@ one and only job. Please thank it before immediately hitting another mine.*
 
 ### Got the published build?
 
-Double-click `publish\neon\minesweeperonsteroids.exe`.
+Double-click `publish\arcade\minesweeperonsteroids.exe`.
 
 The standalone **Windows x64** build includes .NET. Players do **not** need to
 install a runtime. Published builds are local outputs under `publish\neon` and
@@ -72,9 +74,58 @@ Resize the window freely; large minefields scroll when needed.
 | **Classic** | No shield. No radar. No combo multiplier. | Just you, logic, and suspicious little numbers. |
 | **Steroids** | One shield, three scans, up to 5x combos. | The familiar game, now with emergency services. |
 | **Daily** | Steroids equipment; a date-seeded board and fixed center opening. | Same local date + difficulty = same problem to conquer. |
+| **Arcade** | Earned Overdrive, Drone / EMP / Aegis, and between-sector upgrades. | Sweep. Power up. Survive five sectors. |
 
 Daily is an offline, replayable challenge, not an anti-cheat leaderboard.
 You can retry it as often as your pride requires.
+
+## Arcade Run: now we're actually on steroids
+
+![Arcade Run with sector progress, cumulative score, Overdrive energy, and three ability buttons](docs/images/arcade.png)
+
+**Choose Arcade, pick your starting difficulty, then click New game.**
+Clear a sector, pick an upgrade, hit **Next sector**, and face a denser field.
+Conquer **all five sectors** to complete the run. Lose a field and the run ends.
+
+Your field dimensions stay fixed. Each sector adds `max(2, starting mines / 5)`
+mines (integer division), capped at one third of the field. The first reveal
+and its neighbors remain safe, even in sector five.
+
+### Earn your firepower
+
+Start with **40 / 100 Overdrive energy**. Manual reveals and chords earn
+**2 energy per safe tile**, capped at **20 per action** and **100 stored**.
+Opening floods count. Repeated flag toggles, scans, and ability-triggered reveals
+do not earn energy; the Drone cannot refund its own cost.
+
+| Ability | Key | Base cost | What it actually does |
+| --- | --- | --- | --- |
+| **Drone** | **1** | 35 | Opens the nearest unflagged safe tile to your selection, with normal flood reveal and scoring. |
+| **EMP** | **2** | 25 | Shows mines and safe cells across the entire selected row for four seconds. Does not reveal cells. |
+| **Aegis** | **3** | 60 | Adds one automatic shield, up to three total. A blocked mine stays put and is auto-flagged. |
+
+Reveal your opening before deploying abilities. Buttons show the current costs
+and light up when affordable. Number keys work with the minefield focused.
+The three ordinary radar charges still work; a new radar/EMP replaces the
+previous scan overlay.
+
+### Choose the next sector's advantage
+
+- **Reactor:** +1 energy per manually revealed safe tile per level; the
+  20-per-action and 100-stored caps still apply.
+- **Armor:** +1 starting shield each sector, up to three. Maxed choices cannot
+  advance the run; choose another upgrade instead.
+- **Efficiency:** subtract 5 from every ability cost per level, minimum 10.
+
+Energy, cumulative score, and upgrades carry forward. Each new sector resets its
+board, timer, combo, three radar charges, and shields to the upgraded starting
+amount; purchased Aegis shields are for the current sector only.
+
+The HUD shows your **run score**. Every cleared sector saves one labeled record
+with cumulative score, sector number, and **that sector's time**, not total run
+time. A loss does not add a win record. Runs are not saved mid-field or between
+sessions; **New game** starts over, with confirmation during play/intermission.
+Classic, Steroids, and Daily keep their existing rules.
 
 | Difficulty | Field | Mines | Recommended attitude |
 | --- | --- | --- | --- |
@@ -92,6 +143,7 @@ You can retry it as often as your pride requires.
 | **Radar button** / **R** | Scan a 3x3 area around the selected tile |
 | **Arrows / WASD** | Move the cyan selection outline |
 | **Space / F / Enter** | Reveal / flag / chord |
+| **1 / 2 / 3** | Drone / EMP / Aegis in Arcade |
 | **F2** | New game |
 | **F1** | Field manual |
 | **Tab** | Move between controls |
@@ -170,12 +222,18 @@ specified paths. **Exit code 0 = success.**
 Rules/audio tests cover generation, clues, safe openings, floods, flags, chords,
 shields, radar, combos, daily seeds, win/loss rules, persistence, sound-wave
 headers/sample bounds, playback dispatch, and preference compatibility.
+Arcade checks also cover energy costs/caps, no-refund Drone behavior, upgrade
+limits, mine density at all starting difficulties, five-sector progression,
+finale/loss guards, cumulative scoring, and labeled record compatibility.
 
 Desktop checks exercise the actual Windows form, mouse and keyboard handlers,
 the branded window icon, buttons, confirmations, radar expiry, scrolling,
 daily restarts, wins/losses, record saving, animation frame changes, and
 pause/reset/reduced-motion behavior. They save gameplay previews and use isolated
 temporary records, not your personal scores.
+The desktop suite also plays through all five Arcade sectors, exercises the
+ability buttons/hotkeys and row-scan expiry, selects upgrades, and checks restart,
+loss, record saving, and switching back to Classic.
 
 UI tests need an interactive Windows desktop and mostly run muted; the sound
 toggle plays one short confirmation tone. The audio check accepts an explicit
@@ -185,8 +243,8 @@ physical speakers are plugged in. Neither can the mines.
 ## Build your own portable panic button
 
 ```powershell
-dotnet publish .\MinesweeperOnSteroids.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\neon
-Start-Process .\publish\neon\minesweeperonsteroids.exe
+dotnet publish .\MinesweeperOnSteroids.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\arcade
+Start-Process .\publish\arcade\minesweeperonsteroids.exe
 ```
 
 The first publish may download Microsoft's Windows Desktop runtime packs.
