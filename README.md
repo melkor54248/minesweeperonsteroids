@@ -1,14 +1,17 @@
 # minesweeperonsteroids
 
 A **native Windows desktop game**, inspired by classic Minesweeper, with a
-custom-drawn minefield, mouse controls, shields, radar, and combo scoring.
+glossy neon minefield, animated effects, original synthesized sounds, mouse controls,
+shields, radar, and combo scoring.
 Built with C# / .NET 10 Windows Forms. No console window, browser, accounts,
 network access, external packages, or cloud services.
 
 ## Play
 
-Double-click `publish\minesweeperonsteroids.exe`. The standalone Windows x64
+Double-click `publish\neon\minesweeperonsteroids.exe`. The standalone Windows x64
 release includes .NET; players do not need to install a runtime.
+The Neon folder contains the current release. Older executable builds have been
+removed; existing local scores and preferences remain compatible.
 
 Or, with the **.NET 10 SDK** installed, run from PowerShell:
 
@@ -36,6 +39,29 @@ The cyan outline marks the selected radar/keyboard target. Use arrow keys to
 choose a radar target without placing a flag. New games and exiting ask for
 confirmation while a round is in progress. Dialogs pause the timer.
 
+## Neon / audiovisual edition
+
+- Beveled, gradient-lit tiles, hover highlights, drawn flag/mine icons, glossy
+  buttons, a five-card HUD, and a responsive Mission Control briefing panel.
+- Staggered reveal waves, flag pops, floating score/combo rewards, expanding radar
+  pulses, a blue shield burst, a fiery detonation shockwave, and victory confetti.
+  Result banners remain visible after particles settle.
+- Nine original, generated-in-code sound cues: deploy, reveal, flag, unflag,
+  radar, combo, shield, explosion, and victory. No downloaded audio or extra
+  asset files. Short, modest-gain PCM effects play asynchronously without
+  blocking input; new cues replace the previous cue rather than piling up.
+- **Sound: ON/OFF** mutes all game audio and stops any currently playing effect.
+  A playback-device failure appears in the warning area instead of silently
+  falling back to a system beep.
+- **Motion: FULL/LOW** switches off reveal transitions, flashes, moving particles,
+  popups, and animated radar pulses. Radar intel, selection outlines, clues,
+  scores, and result banners still work. Both preferences are saved locally.
+
+Animations are cosmetic: actions take effect immediately and remain responsive
+while effects run. Effect timers stop once the scene settles, clear on new games,
+and pause with help, records, and confirmation dialogs. Sound also stops when
+opening a dialog. There is no background music.
+
 ## Three ways to sweep
 
 - **Classic:** traditional deduction with no shields, radar, or combo multiplier.
@@ -58,7 +84,8 @@ The shield blocks one mine hit and flags that mine. It **does not remove the min
 so clues remain accurate. A chord hitting multiple mines can still be fatal.
 Radar briefly marks covered cells in a 3x3 area with `!` (mine) or `-` (safe),
 overriding flag display for four seconds without opening any cells. Mines never move.
-`F` marks flags; at game over `*` marks mines and `X` marks incorrect flags.
+Gold pennants mark flags; at game over spiked red icons mark mines and `X` marks
+incorrect flags.
 
 Each safe cell earns 10 points times the current combo. Productive reveal/chord
 actions within four seconds raise the combo, capped at 5x; Classic stays at 1x.
@@ -88,17 +115,22 @@ Get-Content .\ui-test-results\desktop-tests.txt
 Because this is a Windows GUI executable, developer checks write reports to the
 specified paths rather than requiring a console. Exit code 0 means success.
 The dependency-free rules tests cover generation, openings, flood reveal, flags,
-chords, shields, radar, scoring, daily seeds, win/loss rules, and persistence.
+chords, shields, radar, scoring, daily seeds, win/loss rules, persistence, sound
+wave headers/sample bounds, native playback dispatch, and preference compatibility.
 The UI tests require an interactive Windows desktop, exercise the real window,
 mouse handlers, keyboard controls, buttons, mode/difficulty selection, confirmations, radar expiry,
-scrolling, daily restarts, wins/losses, and record saving. They use isolated
-temporary records, not your personal scores, and save a preview image.
+scrolling, daily restarts, wins/losses, and record saving. They also compare rendered
+animation frames, verify reduced-motion/reset/pause/expiry behavior, and save
+shield, radar, victory, and explosion previews. UI tests use isolated temporary
+records, not your personal scores, and mostly run muted (the toggle check plays
+one short confirmation tone). The audio check accepts an explicit device warning
+on machines without audio hardware; it cannot verify physical speaker output.
 
 ## Publish a standalone Windows app
 
 ```powershell
-dotnet publish .\MinesweeperOnSteroids.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish
-Start-Process .\publish\minesweeperonsteroids.exe
+dotnet publish .\MinesweeperOnSteroids.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish\neon
+Start-Process .\publish\neon\minesweeperonsteroids.exe
 ```
 
 The publish step may download Microsoft's Windows Desktop runtime packs.

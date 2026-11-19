@@ -9,6 +9,8 @@ internal sealed class PlayerData
 {
     public string PreferredMode { get; set; } = nameof(GameMode.Steroids);
     public int PreferredDifficulty { get; set; }
+    public bool SoundEnabled { get; set; } = true;
+    public bool AnimationsEnabled { get; set; } = true;
     public List<ScoreRecord> Wins { get; set; } = [];
 }
 

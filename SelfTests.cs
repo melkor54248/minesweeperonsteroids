@@ -24,7 +24,10 @@ internal static class SelfTests
             ("Settings and wins survive a storage round trip", Persistence),
             ("Malformed records are warned about and preserved", CorruptRecords),
             ("Invalid record values are rejected", InvalidRecords),
-            ("Storage write failures produce warnings", StorageFailure)
+            ("Storage write failures produce warnings", StorageFailure),
+            ("Original sound cues are distinct, valid, bounded PCM waves", AudioWaves),
+            ("Sound playback dispatch or device warning, mute and disposal", AudioPlayback),
+            ("Sound and motion settings persist; older records keep defaults", EffectPreferences)
         ];
         int failures = 0;
         foreach (var (name, test) in tests)
@@ -285,6 +288,60 @@ internal static class SelfTests
             loaded.Data.PreferredDifficulty == 2 && loaded.Data.Wins.Count == 1 &&
             loaded.Data.Wins[0].Score == game.Score && loaded.Data.Wins[0].Seconds == 12,
             "Records did not round-trip.");
+    });
+
+    private static void AudioWaves()
+    {
+        var signatures = new HashSet<string>();
+        foreach (SoundCue cue in Enum.GetValues<SoundCue>())
+        {
+            byte[] wave = SoundEffects.CreateWave(cue);
+            using var reader = new BinaryReader(new MemoryStream(wave));
+            Check(System.Text.Encoding.ASCII.GetString(reader.ReadBytes(4)) == "RIFF", "Missing RIFF header.");
+            Check(reader.ReadInt32() == wave.Length - 8, "Invalid RIFF length.");
+            Check(System.Text.Encoding.ASCII.GetString(reader.ReadBytes(8)) == "WAVEfmt ", "Missing WAVE format.");
+            Check(reader.ReadInt32() == 16 && reader.ReadInt16() == 1 && reader.ReadInt16() == 1,
+                "Effects must be mono PCM.");
+            Check(reader.ReadInt32() == 22050 && reader.ReadInt32() == 44100 &&
+                reader.ReadInt16() == 2 && reader.ReadInt16() == 16, "Unexpected PCM configuration.");
+            Check(System.Text.Encoding.ASCII.GetString(reader.ReadBytes(4)) == "data" &&
+                reader.ReadInt32() == wave.Length - 44, "Invalid sample data size.");
+            int peak = 0;
+            while (reader.BaseStream.Position < reader.BaseStream.Length)
+                peak = Math.Max(peak, Math.Abs((int)reader.ReadInt16()));
+            Check(peak is > 1000 and < 8192, "Audio must be audible without clipping or excessive gain.");
+            Check(BitConverter.ToInt16(wave, 44) == 0 && Math.Abs((int)BitConverter.ToInt16(wave, wave.Length - 2)) < 100,
+                "Effects must fade in and out to avoid edge clicks.");
+            Check(signatures.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(wave))),
+                "Each event needs a distinct sound.");
+        }
+    }
+
+    private static void AudioPlayback()
+    {
+        using var audio = new SoundEffects();
+        audio.Play(SoundCue.Flag);
+        if (audio.Warning is { } warning)
+            Console.WriteLine($"      Audio device reported: {warning}");
+        audio.Enabled = false;
+        audio.Play(SoundCue.Explosion);
+        Check(!audio.Enabled, "Mute did not stick.");
+        audio.Stop();
+    }
+
+    private static void EffectPreferences() => WithTempPath(path =>
+    {
+        File.WriteAllText(path, """{"PreferredMode":"Steroids","PreferredDifficulty":0,"Wins":[]}""");
+        var store = new RecordStore(path);
+        store.Load();
+        Check(store.Data.SoundEnabled && store.Data.AnimationsEnabled, "Older records lost default effects.");
+        store.Data.SoundEnabled = false;
+        store.Data.AnimationsEnabled = false;
+        store.Save();
+        var loaded = new RecordStore(path);
+        loaded.Load();
+        Check(loaded.Warning is null && !loaded.Data.SoundEnabled && !loaded.Data.AnimationsEnabled,
+            "Audio/motion preferences did not round-trip.");
     });
 
     private static void CorruptRecords() => WithTempPath(path =>
