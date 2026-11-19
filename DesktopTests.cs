@@ -21,6 +21,12 @@ internal static class DesktopTests
             Application.DoEvents();
             Check(form.Visible && form.Board.Visible && form.CurrentGame.State == GameState.Ready,
                 "Native window opens without a console.");
+            using (var icon = (form.Icon ?? throw new InvalidOperationException("No window icon.")).ToBitmap())
+            {
+                Color center = icon.GetPixel(icon.Width / 2, icon.Height / 2);
+                Check(center.R > 180 && center.G > 130 && center.B < 160,
+                    "Window displays the original gold-lightning game icon.");
+            }
             Point selected = form.Board.Selected;
             PressKey(form.Board, Keys.Right);
             Check(form.Board.Selected == new Point(selected.X + 1, selected.Y),

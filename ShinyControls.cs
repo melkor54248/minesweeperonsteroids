@@ -22,8 +22,11 @@ internal static class NeonTheme
 
 internal sealed class GameBrand : Control
 {
-    public GameBrand()
+    private readonly Icon icon;
+
+    public GameBrand(Icon icon)
     {
+        this.icon = icon;
         DoubleBuffered = true;
         AccessibleName = "Minesweeper on Steroids";
     }
@@ -33,13 +36,15 @@ internal sealed class GameBrand : Control
         base.OnPaint(e);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         float scale = DeviceDpi / 96f;
+        float textLeft = 58 * scale;
+        e.Graphics.DrawIcon(icon, new Rectangle(0, (int)(5 * scale), (int)(44 * scale), (int)(44 * scale)));
         using var font = new Font("Segoe UI", Width / scale < 750 ? 23 : 28, FontStyle.Bold);
         using var glow = new SolidBrush(Color.FromArgb(25, NeonTheme.Cyan));
         using var ink = new SolidBrush(Color.FromArgb(219, 255, 249));
-        e.Graphics.DrawString("MINESWEEPER", font, glow, scale, 7 * scale);
-        e.Graphics.DrawString("MINESWEEPER", font, ink, 0, 5 * scale);
+        e.Graphics.DrawString("MINESWEEPER", font, glow, textLeft + scale, 7 * scale);
+        e.Graphics.DrawString("MINESWEEPER", font, ink, textLeft, 5 * scale);
         float textWidth = e.Graphics.MeasureString("MINESWEEPER", font).Width;
-        var badge = new RectangleF(textWidth + 13 * scale, 16 * scale, 158 * scale, 29 * scale);
+        var badge = new RectangleF(textLeft + textWidth + 13 * scale, 16 * scale, 158 * scale, 29 * scale);
         using var path = NeonTheme.Rounded(badge, 6);
         using var fill = new LinearGradientBrush(badge, Color.FromArgb(255, 220, 135), NeonTheme.Gold, 90);
         e.Graphics.FillPath(fill, path);

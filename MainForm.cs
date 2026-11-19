@@ -6,6 +6,7 @@ internal sealed class MainForm : Form
 {
     private readonly RecordStore records;
     private readonly SoundEffects sounds = new();
+    private readonly Icon gameIcon = LoadGameIcon();
     private readonly Func<string, bool>? confirmDiscard;
     private readonly Stopwatch clock = new();
     private readonly System.Windows.Forms.Timer ticker = new() { Interval = 100 };
@@ -37,6 +38,7 @@ internal sealed class MainForm : Form
         sounds.Enabled = records.Data.SoundEnabled;
         board.SetAnimations(records.Data.AnimationsEnabled);
         Text = "minesweeperonsteroids";
+        Icon = gameIcon;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new(1080, 860);
         MinimumSize = new(720, 600);
@@ -55,7 +57,7 @@ internal sealed class MainForm : Form
         layout.RowStyles.Add(new(SizeType.Absolute, 52));
         layout.RowStyles.Add(new(SizeType.Absolute, 30));
         layout.RowStyles.Add(new(SizeType.Absolute, 28));
-        layout.Controls.Add(new GameBrand { Dock = DockStyle.Fill }, 0, 0);
+        layout.Controls.Add(new GameBrand(gameIcon) { Dock = DockStyle.Fill }, 0, 0);
         layout.Controls.Add(new Label
         {
             Text = "CLASSIC DEDUCTION  /  EXTRA FIREPOWER  /  ZERO MERCY",
@@ -113,6 +115,14 @@ internal sealed class MainForm : Form
         Shown += (_, _) => board.Focus();
         StartRound();
         ticker.Start();
+    }
+
+    private static Icon LoadGameIcon()
+    {
+        using Stream stream = typeof(MainForm).Assembly.GetManifestResourceStream("MinesweeperOnSteroids.GameIcon")
+            ?? throw new InvalidOperationException("The embedded game icon is missing.");
+        using var icon = new Icon(stream, new Size(32, 32));
+        return (Icon)icon.Clone();
     }
 
     private static Button MakeButton(string text, string name, EventHandler click)
@@ -340,5 +350,7 @@ internal sealed class MainForm : Form
             sounds.Dispose();
         }
         base.Dispose(disposing);
+        if (disposing)
+            gameIcon.Dispose();
     }
 }
