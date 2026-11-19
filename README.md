@@ -265,6 +265,11 @@ The same emblem appears in the window, taskbar, and Windows executable.
 
 <br clear="left">
 
+## License
+
+Released under the [MIT License](LICENSE).
+Copyright (c) 2026 Stratos Kourtzanidis.
+
 ---
 
 **One more round. This time, definitely no guessing.**
